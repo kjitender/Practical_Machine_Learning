@@ -1,0 +1,231 @@
+---
+title: "Practial Machine Learning Assignment_1"
+author: "Jitender Kumar"
+date: "May 25, 2016"
+output: html_document
+---
+
+## Synopsis 
+
+### Objective and Goal
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The objective of the project is to predict the manner in which participants did the exercise. This is the "classe" variable in the training set. 
+
+Objectives
+
+ - To create a report describing how the model is built
+ - How to  pre process and use cross validation
+ - Interpretation of expected out of sample error 
+ - Appropiate reasons of the choices made and finally
+ - Use the prediction model to predict 20 different test cases.
+
+### Background and Data
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+
+## Loading and Pre processing data
+
+```{r setup, message = FALSE, warning = FALSE, echo = FALSE}
+library(plyr)
+library(dplyr)
+library(caret)
+library(ggplot2)
+library(knitr)
+library(rpart)
+library(reshape2)
+library(randomForest)
+```
+
+```{r cache = TRUE }
+pml_train = read.csv("pml-training.csv", header = TRUE)
+pml_test = read.csv("pml-testing.csv", header = TRUE)
+
+dim(pml_train)
+dim(pml_test)
+```
+
+### Pre processing data
+
+We will clean and transform the data set
+
+1. Removing the first 6 colums which would not be used for prediction
+
+```{r cache = TRUE}
+pml_train<-pml_train[,-c(1:6)]
+```
+
+
+2. Near Zero values processing
+
+```{r cache = TRUE}
+nzv <- nearZeroVar(pml_train, saveMetrics=TRUE)
+pml_train<-pml_train[,nzv$nzv== FALSE]
+```
+
+3. NA check for columns, removing colums with more than 70% of values as NA
+
+```{r cache = TRUE}
+NAcols<- as.data.frame(colSums(is.na(pml_train)/nrow(pml_train)))
+NAcols<- subset(NAcols, NAcols<0.7)
+pml_train <- pml_train[,rownames(NAcols)]
+dim(pml_train)
+```
+
+4. Correlation check of data set
+
+```{r cache = TRUE}
+Corr_cols<- findCorrelation(cor(pml_train[, -54]), cutoff=0.8)
+colnames(pml_train)[Corr_cols]
+length(Corr_cols)/ncol(pml_train)
+```
+
+
+There are 13 columns (24%) which are correlated with each other.We need to use pca for pre processing when fitting a prediciton model.
+
+
+### Exploring data sets
+
+```{r }
+plot_sensor<- function(sensor){
+sensor_col<- c(grep(sensor, colnames(pml_train)), ncol(pml_train))
+plot_data<- melt(pml_train[,sensor_col])
+
+ggplot(plot_data, aes(x=classe, y=value)) + 
+  geom_boxplot(aes(color=classe, fill=classe), alpha=1/10) +
+  facet_wrap(~ variable, scale="free_y") +
+  scale_color_brewer(palette="Set1") +
+  labs(x="", y="") +
+  theme(strip.text.x = element_text(size=8),
+         strip.text.y = element_text(size=12, face="bold"),
+         strip.background = element_rect(colour="black", fill="#CCCCFF") )
+}
+```
+
+```{r cache = TRUE}
+plot_sensor("belt")
+plot_sensor("[^(fore)]arm")
+plot_sensor("dumbbell")
+plot_sensor("forearm")
+```
+
+
+### Processing the test data
+
+Doing the data transformation with test data set
+```{r cache = TRUE}
+pml_test<-pml_test[,-c(1:6)]
+
+nzv_test <- nearZeroVar(pml_test, saveMetrics=TRUE)
+pml_test<-pml_test[,nzv_test$nzv== FALSE]
+
+NAcols_test<- as.data.frame(colSums(is.na(pml_test)/nrow(pml_test)))
+NAcols_test<- subset(NAcols_test, NAcols_test<0.7)
+pml_test <- pml_test[,rownames(NAcols_test)]
+dim(pml_test)
+
+```
+
+
+## Model building, selection and Cross Validation
+
+Building training and probe data set
+
+```{r cache = TRUE}
+inTrain = createDataPartition(pml_train$classe, p = 0.7, list=FALSE)
+data_training = pml_train[inTrain,]
+data_probe = pml_train[-inTrain,]
+```
+
+### PCA Processing and Cross validation
+
+Using the trainControl function for
+
+ - 7 fold Cross Validation 
+ - PCA for pre prosessing 
+ 
+```{r cache = TRUE}
+train_trControl <- trainControl(method = "cv", number = 7,  preProcOptions="pca")
+```
+
+ 
+Model 1:  Tree method for prediction
+```{r cache = TRUE}
+mod_tree<- train(classe~., data = data_training, method = "rpart", trControl= train_trControl)
+```
+
+Model 2: GBM method for prediction
+ 
+```{r message = FALSE, warning = FALSE, cache = TRUE}
+mod_gbm <- train(classe ~ ., data = data_training, method = "gbm", trControl= train_trControl, verbose = FALSE)
+```
+
+Model 3: Randon Forest method for prediction
+ 
+```{r cache = TRUE}
+mod_rf <- train(classe ~ ., data = data_training, method = "rf", trControl= train_trControl)
+```
+
+
+### Comparing the models
+
+Using highest accurary for comparision
+
+```{r cache = TRUE}
+Type_model<- c("Tree","GBM", "Random Forest")
+Accuracy_model<- c(max(mod_tree$results$Accuracy),max(mod_gbm$results$Accuracy), max(mod_rf$results$Accuracy))
+model_compare<- cbind(Type_model, Accuracy_model)
+kable(model_compare)
+```
+
+The Random Forest model gives a better performance though GBM model is very close.
+
+### Validation on probe data set 
+
+```{r cache = TRUE}
+validation_probe <- predict(mod_rf, data_probe)
+confusionMatrix(validation_probe, data_probe$classe)
+```
+
+Out of sample error from probe data set
+```{r cache = TRUE}
+Out_sample_error<- (1- confusionMatrix(validation_probe,data_probe$classe)$overall[[1]])
+print(Out_sample_error,digits= 4)
+```
+
+### Final Model 
+
+```{r cache = TRUE}
+mod_rf$finalModel
+```
+
+Error rate is less than 1%
+
+
+## Prediction on test data set
+
+The Random Forest model will be used for prediction of classe for test data set
+```{r cache = TRUE}
+test_predict <- predict(mod_rf, pml_test)
+print(cbind(pml_test[54],test_predict))
+```
+
+
+This completes the assignment for Practical Machine Learning course.
