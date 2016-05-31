@@ -1,10 +1,12 @@
 ### Practical_Machine_Learning
 Practical Machine Learning
 
+HTML link is http://htmlpreview.github.io/?https://github.com/kjitender/Practical_Machine_Learning/blob/master/Assignment_Code1.html
+
+RPubs link is https://rpubs.com/kjitender/185177
+
 I have attached pdf of the report also.
 
-
-Roubs link is https://rpubs.com/kjitender/185177
 
 ### Objective and Goal
 
